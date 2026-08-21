@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Crossword Grid Editor</title>
+<title>Crossword Constructor</title>
 <style>
   :root {
     --border: #333;
     --black-cell: #222;
     --white-cell: #fff;
-    --highlight: #cfe8ff;
+    --slot-highlight: #dbeafe;
+    --cell-highlight: #93c5fd;
     --num-color: #555;
   }
   * { box-sizing: border-box; }
@@ -27,21 +28,9 @@
     gap: 20px;
     flex-wrap: wrap;
   }
-  header h1 {
-    font-size: 18px;
-    margin: 0;
-    margin-right: 8px;
-  }
-  .control {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 14px;
-  }
-  input[type=number] {
-    width: 56px;
-    padding: 4px;
-  }
+  header h1 { font-size: 18px; margin: 0; margin-right: 8px; }
+  .control { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+  input[type=number] { width: 56px; padding: 4px; }
   button {
     padding: 6px 12px;
     border: 1px solid #999;
@@ -51,71 +40,103 @@
     font-size: 14px;
   }
   button:hover { background: #f0f0f0; }
-  button.active {
-    background: #3b82f6;
-    color: #fff;
-    border-color: #2563eb;
-  }
+
   main {
     display: flex;
-    justify-content: center;
-    padding: 24px;
+    gap: 24px;
+    padding: 20px;
+    align-items: flex-start;
+    flex-wrap: wrap;
   }
+
   #gridWrap {
     display: inline-block;
     border: 2px solid var(--border);
     background: var(--border);
+    flex-shrink: 0;
   }
   .row { display: flex; }
   .cell {
     position: relative;
-    width: 36px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
     background: var(--white-cell);
     border: 0.5px solid #999;
     cursor: pointer;
     user-select: none;
   }
-  .cell.black { background: var(--black-cell); cursor: pointer; }
-  .cell.hover:not(.black) { background: var(--highlight); }
+  .cell.black { background: var(--black-cell); }
+  .cell.inSlot:not(.black) { background: var(--slot-highlight); }
+  .cell.selected:not(.black) { background: var(--cell-highlight); }
   .cell .num {
     position: absolute;
-    top: 1px;
-    left: 2px;
+    top: 0; left: 2px;
     font-size: 9px;
     color: var(--num-color);
     pointer-events: none;
   }
   .cell .letter {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     height: 100%;
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 600;
     pointer-events: none;
   }
-  #stats {
-    font-size: 13px;
-    color: #555;
-    margin-top: 10px;
-    text-align: center;
+
+  #stats { font-size: 13px; color: #555; margin-top: 10px; }
+
+  .panel {
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    width: 300px;
+    max-height: 640px;
+    display: flex;
+    flex-direction: column;
   }
+  .panel h2 {
+    font-size: 14px;
+    margin: 0;
+    padding: 10px 12px;
+    border-bottom: 1px solid #ddd;
+    background: #f7f7f7;
+  }
+  .panel .body { overflow-y: auto; padding: 8px 12px; flex: 1; }
+
+  #wordListStatus { font-size: 12px; color: #555; white-space: pre-line; }
+
+  #candidateHeader { font-size: 13px; color: #333; margin-bottom: 6px; }
+  #candidatePattern {
+    font-family: monospace;
+    font-size: 15px;
+    letter-spacing: 2px;
+  }
+  .candidateRow {
+    display: flex; justify-content: space-between;
+    padding: 4px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .candidateRow:hover { background: #eef4ff; }
+  .candidateRow .score { color: #888; font-size: 12px; }
+
+  .slotList { font-size: 13px; }
+  .slotList .dirLabel { font-weight: 600; margin: 8px 0 4px; }
+  .slotRow { padding: 2px 4px; cursor: pointer; border-radius: 3px; }
+  .slotRow:hover { background: #f0f0f0; }
+  .slotRow.active { background: var(--cell-highlight); }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Grid Editor</h1>
-
+  <h1>Crossword Constructor</h1>
   <div class="control">
-    <label>Rows</label>
-    <input type="number" id="rowsInput" value="15" min="3" max="35">
-    <label>Cols</label>
-    <input type="number" id="colsInput" value="15" min="3" max="35">
+    <label>Rows</label><input type="number" id="rowsInput" value="15" min="3" max="35">
+    <label>Cols</label><input type="number" id="colsInput" value="15" min="3" max="35">
     <button id="resizeBtn">New Grid</button>
   </div>
-
   <div class="control">
     <label>Symmetry</label>
     <select id="symmetrySelect">
@@ -125,11 +146,7 @@
       <option value="none">None</option>
     </select>
   </div>
-
-  <div class="control">
-    <button id="clearBtn">Clear Black Squares</button>
-  </div>
-
+  <div class="control"><button id="clearBtn">Clear Black Squares</button></div>
   <div class="control">
     <button id="saveBtn">Save</button>
     <button id="loadBtn">Load</button>
@@ -141,16 +158,53 @@
     <div id="gridWrap"></div>
     <div id="stats"></div>
   </div>
+
+  <div class="panel">
+    <h2>Word Lists</h2>
+    <div class="body">
+      <div class="control" style="margin-bottom:8px;">
+        <button id="loadFromFolderBtn">Load from ./words/</button>
+      </div>
+      <div class="control" style="margin-bottom:8px;">
+        <input type="file" id="fileInput" multiple accept=".json">
+      </div>
+      <div id="wordListStatus">No word lists loaded yet.</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Entry Candidates</h2>
+    <div class="body">
+      <div id="candidateHeader">Click a white square to select an entry.</div>
+      <div id="candidateList"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Clues / Slots</h2>
+    <div class="body slotList" id="slotListPanel"></div>
+  </div>
 </main>
 
 <script>
 (function () {
-  const STORAGE_KEY = "crossword_grid_v1";
+  const STORAGE_KEY = "crossword_grid_v2";
+  const LETTER_RE = /^[A-ZÁÉÍÓÖŐÚÜŰ]$/;
 
-  let rows = 15;
-  let cols = 15;
-  // grid[r][c] = true if black
-  let grid = [];
+  let rows = 15, cols = 15;
+  let grid = [];      // grid[r][c] = true if black
+  let letters = [];   // letters[r][c] = '' or single char
+
+  // computed each render
+  let numbers = [];
+  let cellSlots = []; // cellSlots[r][c] = { across: idx|null, down: idx|null }
+  let acrossSlots = []; // [{ number, cells: [[r,c],...] }]
+  let downSlots = [];
+
+  let selected = null;   // { r, c }
+  let direction = "A";   // "A" or "D"
+
+  let wordsByLength = {}; // len -> [{word, score}] sorted desc by score
 
   const rowsInput = document.getElementById("rowsInput");
   const colsInput = document.getElementById("colsInput");
@@ -161,61 +215,65 @@
   const statsEl = document.getElementById("stats");
   const saveBtn = document.getElementById("saveBtn");
   const loadBtn = document.getElementById("loadBtn");
+  const loadFromFolderBtn = document.getElementById("loadFromFolderBtn");
+  const fileInput = document.getElementById("fileInput");
+  const wordListStatus = document.getElementById("wordListStatus");
+  const candidateHeader = document.getElementById("candidateHeader");
+  const candidateList = document.getElementById("candidateList");
+  const slotListPanel = document.getElementById("slotListPanel");
 
-  function makeEmptyGrid(r, c) {
-    return Array.from({ length: r }, () => Array(c).fill(false));
+  // ---------- grid setup ----------
+  function makeEmpty2D(r, c, fill) {
+    return Array.from({ length: r }, () => Array(c).fill(fill));
   }
 
   function newGrid() {
     rows = parseInt(rowsInput.value, 10) || 15;
     cols = parseInt(colsInput.value, 10) || 15;
-    grid = makeEmptyGrid(rows, cols);
+    grid = makeEmpty2D(rows, cols, false);
+    letters = makeEmpty2D(rows, cols, "");
+    selected = null;
     render();
   }
 
   function clearBlack() {
-    grid = makeEmptyGrid(rows, cols);
+    grid = makeEmpty2D(rows, cols, false);
+    letters = makeEmpty2D(rows, cols, "");
     render();
   }
 
-  // --- Symmetry ---
   function mirrorCells(r, c) {
     const mode = symmetrySelect.value;
     const cells = [[r, c]];
-    if (mode === "180") {
-      cells.push([rows - 1 - r, cols - 1 - c]);
-    } else if (mode === "mirror-h") {
-      // mirror across horizontal axis (flip rows)
-      cells.push([rows - 1 - r, c]);
-    } else if (mode === "mirror-v") {
-      // mirror across vertical axis (flip cols)
-      cells.push([r, cols - 1 - c]);
-    }
+    if (mode === "180") cells.push([rows - 1 - r, cols - 1 - c]);
+    else if (mode === "mirror-h") cells.push([rows - 1 - r, c]);
+    else if (mode === "mirror-v") cells.push([r, cols - 1 - c]);
     return cells;
   }
 
-  function toggleCell(r, c) {
+  function toggleBlack(r, c) {
     const targetState = !grid[r][c];
     for (const [rr, cc] of mirrorCells(r, c)) {
       grid[rr][cc] = targetState;
+      if (targetState) letters[rr][cc] = "";
     }
+    if (selected && grid[selected.r][selected.c]) selected = null;
     render();
   }
 
-  // --- Numbering (standard crossword rule) ---
-  // A white cell gets a number if it starts an Across entry (length >= 2,
-  // no white cell to the left, white cell to the right) or a Down entry
-  // (length >= 2, no white cell above, white cell below).
-  function computeNumbers() {
-    const numbers = Array.from({ length: rows }, () => Array(cols).fill(null));
-    let n = 1;
-    let acrossCount = 0;
-    let downCount = 0;
+  // ---------- numbering + slots ----------
+  function computeSlots() {
+    numbers = makeEmpty2D(rows, cols, null);
+    cellSlots = Array.from({ length: rows }, () =>
+      Array.from({ length: cols }, () => ({ across: null, down: null }))
+    );
+    acrossSlots = [];
+    downSlots = [];
 
+    let n = 1;
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
-        if (grid[r][c]) continue; // black cell
-
+        if (grid[r][c]) continue;
         const leftBlack = c === 0 || grid[r][c - 1];
         const rightOpen = c < cols - 1 && !grid[r][c + 1];
         const startsAcross = leftBlack && rightOpen;
@@ -224,16 +282,48 @@
         const bottomOpen = r < rows - 1 && !grid[r + 1][c];
         const startsDown = topBlack && bottomOpen;
 
-        if (startsAcross) acrossCount++;
-        if (startsDown) downCount++;
-
         if (startsAcross || startsDown) {
           numbers[r][c] = n;
           n++;
         }
       }
     }
-    return { numbers, acrossCount, downCount };
+
+    // build across slots
+    for (let r = 0; r < rows; r++) {
+      let c = 0;
+      while (c < cols) {
+        if (grid[r][c]) { c++; continue; }
+        const start = c;
+        while (c < cols && !grid[r][c]) c++;
+        const len = c - start;
+        if (len >= 2) {
+          const cells = [];
+          for (let cc = start; cc < c; cc++) cells.push([r, cc]);
+          const idx = acrossSlots.length;
+          acrossSlots.push({ number: numbers[r][start], cells });
+          cells.forEach(([rr, cc]) => { cellSlots[rr][cc].across = idx; });
+        }
+      }
+    }
+
+    // build down slots
+    for (let c = 0; c < cols; c++) {
+      let r = 0;
+      while (r < rows) {
+        if (grid[r][c]) { r++; continue; }
+        const start = r;
+        while (r < rows && !grid[r][c]) r++;
+        const len = r - start;
+        if (len >= 2) {
+          const cells = [];
+          for (let rr = start; rr < r; rr++) cells.push([rr, c]);
+          const idx = downSlots.length;
+          downSlots.push({ number: numbers[start][c], cells });
+          cells.forEach(([rr, cc]) => { cellSlots[rr][cc].down = idx; });
+        }
+      }
+    }
   }
 
   function countWhite() {
@@ -244,9 +334,192 @@
     return white;
   }
 
-  // --- Render ---
+  // ---------- selection ----------
+  function selectCell(r, c) {
+    if (grid[r][c]) return;
+    const slots = cellSlots[r][c];
+    if (selected && selected.r === r && selected.c === c) {
+      if (slots.across !== null && slots.down !== null) {
+        direction = direction === "A" ? "D" : "A";
+      }
+    } else {
+      selected = { r, c };
+      if (direction === "A" && slots.across === null) direction = "D";
+      if (direction === "D" && slots.down === null) direction = "A";
+    }
+    render();
+  }
+
+  function currentSlot() {
+    if (!selected) return null;
+    const slots = cellSlots[selected.r][selected.c];
+    const idx = direction === "A" ? slots.across : slots.down;
+    if (idx === null) return null;
+    return direction === "A" ? acrossSlots[idx] : downSlots[idx];
+  }
+
+  function indexInSlot(slot, r, c) {
+    return slot.cells.findIndex(([rr, cc]) => rr === r && cc === c);
+  }
+
+  function moveSelection(dr, dc) {
+    if (!selected) return;
+    let r = selected.r + dr, c = selected.c + dc;
+    if (r < 0 || r >= rows || c < 0 || c >= cols || grid[r][c]) return;
+    selected = { r, c };
+    if (dr !== 0) direction = "D";
+    if (dc !== 0) direction = "A";
+    render();
+  }
+
+  function typeLetter(ch) {
+    if (!selected) return;
+    letters[selected.r][selected.c] = ch;
+    const slot = currentSlot();
+    if (slot) {
+      const idx = indexInSlot(slot, selected.r, selected.c);
+      if (idx < slot.cells.length - 1) {
+        const [nr, nc] = slot.cells[idx + 1];
+        selected = { r: nr, c: nc };
+      }
+    }
+    render();
+  }
+
+  function backspace() {
+    if (!selected) return;
+    if (letters[selected.r][selected.c]) {
+      letters[selected.r][selected.c] = "";
+    } else {
+      const slot = currentSlot();
+      if (slot) {
+        const idx = indexInSlot(slot, selected.r, selected.c);
+        if (idx > 0) {
+          const [pr, pc] = slot.cells[idx - 1];
+          selected = { r: pr, c: pc };
+          letters[pr][pc] = "";
+        }
+      }
+    }
+    render();
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (!selected) return;
+    const key = e.key;
+    if (key.length === 1 && LETTER_RE.test(key.toUpperCase())) {
+      typeLetter(key.toUpperCase());
+      e.preventDefault();
+    } else if (key === "Backspace") {
+      backspace();
+      e.preventDefault();
+    } else if (key === "ArrowUp") { moveSelection(-1, 0); e.preventDefault(); }
+    else if (key === "ArrowDown") { moveSelection(1, 0); e.preventDefault(); }
+    else if (key === "ArrowLeft") { moveSelection(0, -1); e.preventDefault(); }
+    else if (key === "ArrowRight") { moveSelection(0, 1); e.preventDefault(); }
+    else if (key === " " || key === "Tab") {
+      direction = direction === "A" ? "D" : "A";
+      render();
+      e.preventDefault();
+    }
+  });
+
+  // ---------- candidates ----------
+  function getPattern(slot) {
+    return slot.cells.map(([r, c]) => letters[r][c] || ".").join("");
+  }
+
+  function queryCandidates(pattern) {
+    const len = pattern.length;
+    const list = wordsByLength[len];
+    if (!list) return [];
+    const re = new RegExp("^" + pattern.split("").map(ch => ch === "." ? "." : ch).join("") + "$");
+    const out = [];
+    for (const entry of list) {
+      if (re.test(entry.word)) {
+        out.push(entry);
+        if (out.length >= 100) break; // list is pre-sorted by score desc
+      }
+    }
+    return out;
+  }
+
+  function fillSlotWithWord(slot, word) {
+    slot.cells.forEach(([r, c], i) => { letters[r][c] = word[i]; });
+    render();
+  }
+
+  function renderCandidates() {
+    const slot = currentSlot();
+    if (!slot) {
+      candidateHeader.textContent = "Click a white square to select an entry.";
+      candidateList.innerHTML = "";
+      return;
+    }
+    const pattern = getPattern(slot);
+    const dirLabel = direction === "A" ? "Across" : "Down";
+    candidateHeader.innerHTML =
+      `${slot.number} ${dirLabel} &middot; length ${slot.cells.length} &middot; ` +
+      `<span id="candidatePattern">${pattern}</span>`;
+
+    if (!wordsByLength[pattern.length]) {
+      candidateList.innerHTML = `<div style="color:#999;font-size:13px;">No word list loaded for length ${pattern.length}.</div>`;
+      return;
+    }
+
+    const results = queryCandidates(pattern);
+    if (results.length === 0) {
+      candidateList.innerHTML = `<div style="color:#999;font-size:13px;">No matches.</div>`;
+      return;
+    }
+    candidateList.innerHTML = "";
+    for (const { word, score } of results) {
+      const row = document.createElement("div");
+      row.className = "candidateRow";
+      row.innerHTML = `<span>${word}</span><span class="score">${score}</span>`;
+      row.addEventListener("click", () => fillSlotWithWord(slot, word));
+      candidateList.appendChild(row);
+    }
+  }
+
+  // ---------- slot list panel ----------
+  function renderSlotList() {
+    let html = '<div class="dirLabel">Across</div>';
+    for (const slot of acrossSlots) {
+      const active = direction === "A" && selected &&
+        indexInSlot(slot, selected.r, selected.c) !== -1;
+      html += `<div class="slotRow${active ? " active" : ""}" data-dir="A" data-num="${slot.number}">` +
+              `${slot.number}. (${slot.cells.length})</div>`;
+    }
+    html += '<div class="dirLabel">Down</div>';
+    for (const slot of downSlots) {
+      const active = direction === "D" && selected &&
+        indexInSlot(slot, selected.r, selected.c) !== -1;
+      html += `<div class="slotRow${active ? " active" : ""}" data-dir="D" data-num="${slot.number}">` +
+              `${slot.number}. (${slot.cells.length})</div>`;
+    }
+    slotListPanel.innerHTML = html;
+
+    slotListPanel.querySelectorAll(".slotRow").forEach(el => {
+      el.addEventListener("click", () => {
+        const dir = el.dataset.dir;
+        const num = parseInt(el.dataset.num, 10);
+        const list = dir === "A" ? acrossSlots : downSlots;
+        const slot = list.find(s => s.number === num);
+        if (!slot) return;
+        direction = dir;
+        selected = { r: slot.cells[0][0], c: slot.cells[0][1] };
+        render();
+      });
+    });
+  }
+
+  // ---------- main render ----------
   function render() {
-    const { numbers, acrossCount, downCount } = computeNumbers();
+    computeSlots();
+
+    const slot = currentSlot();
+    const slotCellKeys = new Set(slot ? slot.cells.map(([r, c]) => r + "," + c) : []);
 
     gridWrap.innerHTML = "";
     for (let r = 0; r < rows; r++) {
@@ -254,8 +527,20 @@
       rowEl.className = "row";
       for (let c = 0; c < cols; c++) {
         const cellEl = document.createElement("div");
-        cellEl.className = "cell" + (grid[r][c] ? " black" : "");
-        cellEl.addEventListener("click", () => toggleCell(r, c));
+        const isSelected = selected && selected.r === r && selected.c === c;
+        const inSlot = slotCellKeys.has(r + "," + c);
+        cellEl.className = "cell" +
+          (grid[r][c] ? " black" : "") +
+          (inSlot && !isSelected ? " inSlot" : "") +
+          (isSelected ? " selected" : "");
+        cellEl.addEventListener("click", () => {
+          if (grid[r][c]) toggleBlack(r, c);
+          else selectCell(r, c);
+        });
+        cellEl.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          toggleBlack(r, c);
+        });
 
         if (!grid[r][c] && numbers[r][c]) {
           const numEl = document.createElement("div");
@@ -263,47 +548,121 @@
           numEl.textContent = numbers[r][c];
           cellEl.appendChild(numEl);
         }
+        if (!grid[r][c] && letters[r][c]) {
+          const letterEl = document.createElement("div");
+          letterEl.className = "letter";
+          letterEl.textContent = letters[r][c];
+          cellEl.appendChild(letterEl);
+        }
         rowEl.appendChild(cellEl);
       }
       gridWrap.appendChild(rowEl);
     }
 
-    const white = countWhite();
     statsEl.textContent =
-      `${rows} × ${cols} grid  •  ${white} white squares  •  ` +
-      `${acrossCount} across entries  •  ${downCount} down entries`;
+      `${rows} x ${cols} grid  -  ${countWhite()} white squares  -  ` +
+      `${acrossSlots.length} across entries  -  ${downSlots.length} down entries  -  ` +
+      `left-click: select, right-click: toggle black`;
+
+    renderCandidates();
+    renderSlotList();
   }
 
-  // --- Persistence ---
+  // ---------- word list loading ----------
+  function summarizeWordLists() {
+    const lens = Object.keys(wordsByLength).map(Number).sort((a, b) => a - b);
+    if (lens.length === 0) {
+      wordListStatus.textContent = "No word lists loaded yet.";
+      return;
+    }
+    wordListStatus.textContent = lens
+      .map(len => `length ${len}: ${wordsByLength[len].length} words`)
+      .join("\n");
+  }
+
+  function addWords(arr) {
+    for (const entry of arr) {
+      const word = (entry.word || "").toUpperCase();
+      const score = typeof entry.score === "number" ? entry.score : 0;
+      if (!word) continue;
+      const len = word.length;
+      (wordsByLength[len] ??= []).push({ word, score });
+    }
+    for (const len of Object.keys(wordsByLength)) {
+      wordsByLength[len].sort((a, b) => b.score - a.score);
+    }
+  }
+
+  async function loadFromFolder() {
+    let loadedAny = false;
+    for (let len = 2; len <= 15; len++) {
+      try {
+        const res = await fetch(`words/words_${len}.json`);
+        if (!res.ok) continue;
+        const data = await res.json();
+        addWords(data);
+        loadedAny = true;
+      } catch (e) { /* file not present, skip */ }
+    }
+    if (!loadedAny) {
+      wordListStatus.textContent =
+        "Couldn't fetch words/words_N.json -- if you're opening this file " +
+        "directly (file://) rather than through GitHub Pages or a local " +
+        "server, use the file picker below instead.";
+    } else {
+      summarizeWordLists();
+    }
+    renderCandidates();
+  }
+
+  function loadFromFiles(fileList) {
+    let remaining = fileList.length;
+    for (const file of fileList) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result);
+          addWords(data);
+        } catch (e) {
+          console.error("Failed to parse", file.name, e);
+        }
+        remaining--;
+        if (remaining === 0) {
+          summarizeWordLists();
+          renderCandidates();
+        }
+      };
+      reader.readAsText(file);
+    }
+  }
+
+  // ---------- persistence ----------
   function save() {
-    const data = { rows, cols, grid };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ rows, cols, grid, letters }));
     alert("Saved to browser storage.");
   }
 
   function load() {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      alert("No saved grid found.");
-      return;
-    }
+    if (!raw) { alert("No saved grid found."); return; }
     const data = JSON.parse(raw);
-    rows = data.rows;
-    cols = data.cols;
-    grid = data.grid;
-    rowsInput.value = rows;
-    colsInput.value = cols;
+    rows = data.rows; cols = data.cols; grid = data.grid; letters = data.letters;
+    rowsInput.value = rows; colsInput.value = cols;
+    selected = null;
     render();
   }
 
-  // --- Wire up ---
+  // ---------- wire up ----------
   resizeBtn.addEventListener("click", newGrid);
   clearBtn.addEventListener("click", clearBlack);
   saveBtn.addEventListener("click", save);
   loadBtn.addEventListener("click", load);
+  loadFromFolderBtn.addEventListener("click", loadFromFolder);
+  fileInput.addEventListener("change", (e) => loadFromFiles(e.target.files));
 
   // init
-  grid = makeEmptyGrid(rows, cols);
+  grid = makeEmpty2D(rows, cols, false);
+  letters = makeEmpty2D(rows, cols, "");
   render();
 })();
 </script>

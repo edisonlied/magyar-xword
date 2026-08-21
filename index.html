@@ -163,7 +163,7 @@
     <h2>Word Lists</h2>
     <div class="body">
       <div class="control" style="margin-bottom:8px;">
-        <button id="loadFromFolderBtn">Load from ./words/</button>
+        <button id="loadFromFolderBtn">Reload ./words/</button>
       </div>
       <div class="control" style="margin-bottom:8px;">
         <input type="file" id="fileInput" multiple accept=".json">
@@ -593,24 +593,50 @@
     }
   }
 
-  async function loadFromFolder() {
-    let loadedAny = false;
-    for (let len = 2; len <= 15; len++) {
-      try {
-        const res = await fetch(`words/words_${len}.json`);
-        if (!res.ok) continue;
-        const data = await res.json();
-        addWords(data);
-        loadedAny = true;
-      } catch (e) { /* file not present, skip */ }
+  async function tryFetchJson(url) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null; // not present, or fetch blocked (e.g. file:// origin)
     }
+  }
+
+  async function autoLoadWordLists() {
+    wordListStatus.textContent = "Loading word lists from ./words/ ...";
+    let loadedAny = false;
+
+    // Preferred: a manifest at words/index.json listing every filename to
+    // load, e.g. ["words_3.json", "words_4.json", "bonus_names.json"].
+    // This lets you use any filenames/lengths without the app guessing.
+    const manifest = await tryFetchJson("words/index.json");
+    if (Array.isArray(manifest)) {
+      for (const fname of manifest) {
+        const data = await tryFetchJson(`words/${fname}`);
+        if (data) { addWords(data); loadedAny = true; }
+      }
+    }
+
+    // Fallback (also runs if a manifest entry didn't cover everything):
+    // guess the words_<length>.json convention across a generous range.
     if (!loadedAny) {
-      wordListStatus.textContent =
-        "Couldn't fetch words/words_N.json -- if you're opening this file " +
-        "directly (file://) rather than through GitHub Pages or a local " +
-        "server, use the file picker below instead.";
-    } else {
+      for (let len = 2; len <= 21; len++) {
+        const data = await tryFetchJson(`words/words_${len}.json`);
+        if (data) { addWords(data); loadedAny = true; }
+      }
+    }
+
+    if (loadedAny) {
       summarizeWordLists();
+    } else {
+      wordListStatus.textContent =
+        "No word lists found automatically.\n" +
+        "- If opening this file directly (file://) rather than via GitHub " +
+        "Pages or a local server, fetch requests are blocked by the " +
+        "browser -- use the file picker below instead.\n" +
+        "- Otherwise, add a words/index.json listing your filenames, or " +
+        "name files words_<length>.json.";
     }
     renderCandidates();
   }
@@ -657,13 +683,14 @@
   clearBtn.addEventListener("click", clearBlack);
   saveBtn.addEventListener("click", save);
   loadBtn.addEventListener("click", load);
-  loadFromFolderBtn.addEventListener("click", loadFromFolder);
+  loadFromFolderBtn.addEventListener("click", autoLoadWordLists);
   fileInput.addEventListener("change", (e) => loadFromFiles(e.target.files));
 
   // init
   grid = makeEmpty2D(rows, cols, false);
   letters = makeEmpty2D(rows, cols, "");
   render();
+  autoLoadWordLists(); // pull in everything under ./words/ on page load
 })();
 </script>
 

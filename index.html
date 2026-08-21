@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Crossword Grid Editor</title>
+<style>
+  :root {
+    --border: #333;
+    --black-cell: #222;
+    --white-cell: #fff;
+    --highlight: #cfe8ff;
+    --num-color: #555;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Helvetica, Arial, sans-serif;
+    margin: 0;
+    background: #f4f4f4;
+    color: #1a1a1a;
+  }
+  header {
+    background: #e6e6e6;
+    border-bottom: 1px solid #bbb;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  header h1 {
+    font-size: 18px;
+    margin: 0;
+    margin-right: 8px;
+  }
+  .control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+  }
+  input[type=number] {
+    width: 56px;
+    padding: 4px;
+  }
+  button {
+    padding: 6px 12px;
+    border: 1px solid #999;
+    background: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  button:hover { background: #f0f0f0; }
+  button.active {
+    background: #3b82f6;
+    color: #fff;
+    border-color: #2563eb;
+  }
+  main {
+    display: flex;
+    justify-content: center;
+    padding: 24px;
+  }
+  #gridWrap {
+    display: inline-block;
+    border: 2px solid var(--border);
+    background: var(--border);
+  }
+  .row { display: flex; }
+  .cell {
+    position: relative;
+    width: 36px;
+    height: 36px;
+    background: var(--white-cell);
+    border: 0.5px solid #999;
+    cursor: pointer;
+    user-select: none;
+  }
+  .cell.black { background: var(--black-cell); cursor: pointer; }
+  .cell.hover:not(.black) { background: var(--highlight); }
+  .cell .num {
+    position: absolute;
+    top: 1px;
+    left: 2px;
+    font-size: 9px;
+    color: var(--num-color);
+    pointer-events: none;
+  }
+  .cell .letter {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    font-size: 18px;
+    font-weight: 600;
+    pointer-events: none;
+  }
+  #stats {
+    font-size: 13px;
+    color: #555;
+    margin-top: 10px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Grid Editor</h1>
+
+  <div class="control">
+    <label>Rows</label>
+    <input type="number" id="rowsInput" value="15" min="3" max="35">
+    <label>Cols</label>
+    <input type="number" id="colsInput" value="15" min="3" max="35">
+    <button id="resizeBtn">New Grid</button>
+  </div>
+
+  <div class="control">
+    <label>Symmetry</label>
+    <select id="symmetrySelect">
+      <option value="180">180° Rotational</option>
+      <option value="mirror-h">Mirror Horizontal</option>
+      <option value="mirror-v">Mirror Vertical</option>
+      <option value="none">None</option>
+    </select>
+  </div>
+
+  <div class="control">
+    <button id="clearBtn">Clear Black Squares</button>
+  </div>
+
+  <div class="control">
+    <button id="saveBtn">Save</button>
+    <button id="loadBtn">Load</button>
+  </div>
+</header>
+
+<main>
+  <div>
+    <div id="gridWrap"></div>
+    <div id="stats"></div>
+  </div>
+</main>
+
+<script>
+(function () {
+  const STORAGE_KEY = "crossword_grid_v1";
+
+  let rows = 15;
+  let cols = 15;
+  // grid[r][c] = true if black
+  let grid = [];
+
+  const rowsInput = document.getElementById("rowsInput");
+  const colsInput = document.getElementById("colsInput");
+  const resizeBtn = document.getElementById("resizeBtn");
+  const clearBtn = document.getElementById("clearBtn");
+  const symmetrySelect = document.getElementById("symmetrySelect");
+  const gridWrap = document.getElementById("gridWrap");
+  const statsEl = document.getElementById("stats");
+  const saveBtn = document.getElementById("saveBtn");
+  const loadBtn = document.getElementById("loadBtn");
+
+  function makeEmptyGrid(r, c) {
+    return Array.from({ length: r }, () => Array(c).fill(false));
+  }
+
+  function newGrid() {
+    rows = parseInt(rowsInput.value, 10) || 15;
+    cols = parseInt(colsInput.value, 10) || 15;
+    grid = makeEmptyGrid(rows, cols);
+    render();
+  }
+
+  function clearBlack() {
+    grid = makeEmptyGrid(rows, cols);
+    render();
+  }
+
+  // --- Symmetry ---
+  function mirrorCells(r, c) {
+    const mode = symmetrySelect.value;
+    const cells = [[r, c]];
+    if (mode === "180") {
+      cells.push([rows - 1 - r, cols - 1 - c]);
+    } else if (mode === "mirror-h") {
+      // mirror across horizontal axis (flip rows)
+      cells.push([rows - 1 - r, c]);
+    } else if (mode === "mirror-v") {
+      // mirror across vertical axis (flip cols)
+      cells.push([r, cols - 1 - c]);
+    }
+    return cells;
+  }
+
+  function toggleCell(r, c) {
+    const targetState = !grid[r][c];
+    for (const [rr, cc] of mirrorCells(r, c)) {
+      grid[rr][cc] = targetState;
+    }
+    render();
+  }
+
+  // --- Numbering (standard crossword rule) ---
+  // A white cell gets a number if it starts an Across entry (length >= 2,
+  // no white cell to the left, white cell to the right) or a Down entry
+  // (length >= 2, no white cell above, white cell below).
+  function computeNumbers() {
+    const numbers = Array.from({ length: rows }, () => Array(cols).fill(null));
+    let n = 1;
+    let acrossCount = 0;
+    let downCount = 0;
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (grid[r][c]) continue; // black cell
+
+        const leftBlack = c === 0 || grid[r][c - 1];
+        const rightOpen = c < cols - 1 && !grid[r][c + 1];
+        const startsAcross = leftBlack && rightOpen;
+
+        const topBlack = r === 0 || grid[r - 1][c];
+        const bottomOpen = r < rows - 1 && !grid[r + 1][c];
+        const startsDown = topBlack && bottomOpen;
+
+        if (startsAcross) acrossCount++;
+        if (startsDown) downCount++;
+
+        if (startsAcross || startsDown) {
+          numbers[r][c] = n;
+          n++;
+        }
+      }
+    }
+    return { numbers, acrossCount, downCount };
+  }
+
+  function countWhite() {
+    let white = 0;
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++)
+        if (!grid[r][c]) white++;
+    return white;
+  }
+
+  // --- Render ---
+  function render() {
+    const { numbers, acrossCount, downCount } = computeNumbers();
+
+    gridWrap.innerHTML = "";
+    for (let r = 0; r < rows; r++) {
+      const rowEl = document.createElement("div");
+      rowEl.className = "row";
+      for (let c = 0; c < cols; c++) {
+        const cellEl = document.createElement("div");
+        cellEl.className = "cell" + (grid[r][c] ? " black" : "");
+        cellEl.addEventListener("click", () => toggleCell(r, c));
+
+        if (!grid[r][c] && numbers[r][c]) {
+          const numEl = document.createElement("div");
+          numEl.className = "num";
+          numEl.textContent = numbers[r][c];
+          cellEl.appendChild(numEl);
+        }
+        rowEl.appendChild(cellEl);
+      }
+      gridWrap.appendChild(rowEl);
+    }
+
+    const white = countWhite();
+    statsEl.textContent =
+      `${rows} × ${cols} grid  •  ${white} white squares  •  ` +
+      `${acrossCount} across entries  •  ${downCount} down entries`;
+  }
+
+  // --- Persistence ---
+  function save() {
+    const data = { rows, cols, grid };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    alert("Saved to browser storage.");
+  }
+
+  function load() {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      alert("No saved grid found.");
+      return;
+    }
+    const data = JSON.parse(raw);
+    rows = data.rows;
+    cols = data.cols;
+    grid = data.grid;
+    rowsInput.value = rows;
+    colsInput.value = cols;
+    render();
+  }
+
+  // --- Wire up ---
+  resizeBtn.addEventListener("click", newGrid);
+  clearBtn.addEventListener("click", clearBlack);
+  saveBtn.addEventListener("click", save);
+  loadBtn.addEventListener("click", load);
+
+  // init
+  grid = makeEmptyGrid(rows, cols);
+  render();
+})();
+</script>
+
+</body>
+</html>
